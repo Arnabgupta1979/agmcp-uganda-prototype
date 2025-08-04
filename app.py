@@ -1,7 +1,9 @@
+# Complete AgMCP Uganda Prototype
 import streamlit as st
 import requests
 import pandas as pd
 from datetime import datetime, timedelta
+import json
 
 # Configuration
 st.set_page_config(
@@ -11,7 +13,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# DISTRICTS DATABASE
+# CORE DATA STRUCTURES
 DISTRICTS = {
     'Wakiso': {
         'region': 'Lake Victoria Crescent',
@@ -75,7 +77,7 @@ ALERT_RULES = [
         'actions': [
             'Harvest all mature pods today',
             'Dry beans on tarpaulins under cover',
-            'Check pods for brown/dry appearance', 
+            'Check pods for brown/dry appearance',
             'Store in ventilated bags'
         ]
     },
@@ -100,7 +102,7 @@ ALERT_RULES = [
     },
     {
         'crop': 'maize',
-        'district': 'gulu', 
+        'district': 'gulu',
         'season': 1,
         'stage': 'pest_control',
         'start_date': '04-01',
@@ -120,7 +122,7 @@ ALERT_RULES = [
 ]
 
 # WEATHER FUNCTIONS
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=3600)  # Cache for 1 hour
 def get_weather_forecast(lat, lon, days=7):
     """Fetch weather forecast from Open-Meteo API"""
     url = "https://api.open-meteo.com/v1/forecast"
@@ -175,12 +177,15 @@ def check_alerts(district, crop, current_date, weather_analysis):
     current_date_str = current_date.strftime('%m-%d')
     
     for rule in ALERT_RULES:
+        # Filter by district and crop
         if rule['district'] != 'all' and rule['district'] != district.lower():
             continue
         if rule['crop'] != crop:
             continue
         
+        # Check date window
         if rule['start_date'] <= current_date_str <= rule['end_date']:
+            # Check weather conditions
             weather_triggered = check_weather_trigger(rule['weather_conditions'], weather_analysis)
             
             if weather_triggered:
@@ -270,6 +275,7 @@ def main():
     with st.sidebar:
         st.header("📍 Farm Details")
         
+        # District selection
         district = st.selectbox(
             "Select District:",
             list(DISTRICTS.keys()),
@@ -278,19 +284,23 @@ def main():
         
         district_info = DISTRICTS[district]
         
+        # Show district info
         st.info(f"""
         **{district_info['region']}**
         📍 {district_info['description']}
         """)
         
+        # Crop selection
         crop = st.selectbox(
             "Select Crop:",
             district_info['main_crops'],
             help="Choose your current crop"
         )
         
+        # Current date
         st.markdown(f"📅 **Date:** {datetime.now().strftime('%B %d, %Y')}")
         
+        # Refresh button
         if st.button("🔄 Refresh Data"):
             st.cache_data.clear()
             st.rerun()
@@ -301,12 +311,14 @@ def main():
     with col1:
         st.header(f"🎯 Advisory: {crop.title()} in {district}")
         
+        # Get weather data
         forecast = get_weather_forecast(district_info['lat'], district_info['lon'])
         
         if forecast:
             weather_analysis = analyze_weather_conditions(forecast)
             current_date = datetime.now()
             
+            # Check for alerts
             alerts = check_alerts(district, crop, current_date, weather_analysis)
             
             if alerts:
@@ -319,18 +331,22 @@ def main():
                     with st.expander(f"{severity['icon']} {severity['level']}: {rule['title']}", expanded=True):
                         st.markdown(f"**{rule['message']}**")
                         
+                        # Weather context
                         if alert['weather_context']:
                             st.info("Weather triggers: " + ", ".join(alert['weather_context']))
                         
+                        # Actions
                         st.markdown("**Recommended Actions:**")
                         for action in rule['actions']:
                             st.markdown(f"• {action}")
                         
+                        # Stage info
                         st.caption(f"Crop stage: {rule['stage'].replace('_', ' ').title()} | Priority: {rule['priority'].title()}")
             else:
                 st.success("✅ No critical alerts at this time")
                 st.info("Continue with normal farming activities. Check daily for updates.")
             
+            # Weather forecast table
             st.subheader("🌦️ 7-Day Weather Forecast")
             
             df = pd.DataFrame(forecast)
@@ -352,6 +368,7 @@ def main():
         st.header("📊 Summary")
         
         if forecast:
+            # Weather metrics
             total_rain = sum(day['rainfall_mm'] for day in forecast)
             avg_temp = sum(day['temp_max'] for day in forecast) / len(forecast)
             rainy_days = len([d for d in forecast if d['rainfall_mm'] > 1])
@@ -360,6 +377,7 @@ def main():
             st.metric("Avg Max Temp", f"{avg_temp:.1f}°C") 
             st.metric("Rainy Days", f"{rainy_days} days")
         
+        # Crop guidance
         st.subheader("🌱 Crop Info")
         guidance = get_crop_guidance(crop, district)
         
@@ -369,6 +387,7 @@ def main():
             st.markdown(f"**Watch for:** {guidance['critical_periods']}")
             st.info(f"💡 **Tip:** {guidance['tips']}")
         
+        # Additional info
         st.subheader("ℹ️ About")
         st.markdown("""
         This system uses:
